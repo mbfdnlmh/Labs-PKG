@@ -1,0 +1,118 @@
+Документация разработчика для лабораторной 2 "Информация об изображениях"
+1. Введение
+
+Этот проект представляет собой графическое приложение для отображения информации о различных изображениях в выбранной пользователем папке. Программа использует библиотеку Tkinter для создания пользовательского интерфейса и Pillow для обработки изображений. В программе реализована возможность асинхронной обработки изображений, благодаря чему она может эффективно работать с большими коллекциями файлов.
+2. Обзор архитектуры
+
+Проект использует простую архитектуру с разделением логики на несколько частей:
+
+    Интерфейс пользователя — построен с использованием библиотеки Tkinter, включая таблицу для отображения информации об изображениях и кнопку для выбора папки.
+    Логика обработки файлов — использование библиотеки Pillow для открытия и анализа различных типов изображений.
+    Асинхронная обработка — для ускорения обработки файлов используется многопоточность с помощью concurrent.futures.ThreadPoolExecutor.
+    Логирование — с помощью библиотеки logging ведется журнал всех операций и ошибок.
+
+3. Структура проекта
+
+src/
+│
+├── app.py                     # Основной файл с приложением
+├── requirements.txt           # Список зависимостей
+└── logs/
+    └── image_processing.log   # Лог-файл приложения
+
+4. Описание классов и методов
+Метод get_image_info(image_path)
+
+Этот метод открывает изображение и извлекает информацию о нем: имя файла, размеры, глубину цвета и тип сжатия. Поддерживаются форматы изображений: JPEG, PNG, GIF, BMP, TIFF и PCX.
+
+def get_image_info(image_path):
+    try:
+        info = {}
+        data = Image.open(image_path)
+        with Image.open(image_path) as img:
+            info['filename'] = os.path.basename(image_path)
+            info['size'] = f"{img.width} x {img.height} px"
+            info['color_depth'] = img.mode
+            if isinstance(img, JpegImageFile):
+                info['compression'] = 'Lossy'
+            elif isinstance(img, PngImageFile):
+                info['compression'] = 'Deflate'
+            elif isinstance(img, GifImageFile):
+                info['compression'] = 'LZW'
+            elif isinstance(img, BmpImageFile):
+                info['compression'] = 'RLE or None'
+            elif isinstance(img, TiffImageFile):
+                info['compression'] = img.info.get('compression', 'N/A')
+            else:
+                info['compression'] = 'N/A'
+
+        logging.info(f"Processed file: {image_path}")
+        return info
+    except Exception as e:
+        logging.error(f"Error processing file {image_path}: {e}")
+        return {'error': str(e)}
+
+Метод process_file(file_path)
+
+Этот метод запускает обработку одного файла и возвращает результат или ошибку.
+
+def process_file(file_path):
+    try:
+        return get_image_info(file_path)
+    except Exception as e:
+        logging.error(f"Error in process_file for {file_path}: {e}")
+        return {'filename': os.path.basename(file_path), 'error': str(e)}
+
+Метод process_directory()
+
+Этот метод обрабатывает все файлы в выбранной пользователем папке. Он вызывает обработку каждого файла через многопоточность, используя ThreadPoolExecutor.
+
+def process_directory():
+    folder = filedialog.askdirectory(title="Выберите папку с изображениями")
+    if not folder:
+        logging.warning("No folder selected.")
+        return
+
+    logging.info(f"Selected folder: {folder}")
+
+    try:
+        all_files = os.scandir(folder)
+        files = [entry.path for entry in all_files if entry.is_file() and entry.name.lower().endswith(('jpg', 'jpeg', 'gif', 'tif', 'bmp', 'png', 'pcx'))]
+        
+        logging.info(f"Total files found: {len(files)}")
+
+        for row in tree.get_children():
+            tree.delete(row)
+
+        # Асинхронная обработка файлов
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            results = executor.map(process_file, files)
+
+        for result in results:
+            if 'error' in result:
+                logging.warning(f"Failed to process file: {result['filename']} - {result['error']}")
+            else:
+                tree.insert("", "end", values=(
+                    result['filename'], result.get('size', 'N/A'), result.get('color_depth', 'N/A'), result.get('compression', 'N/A')
+                ))
+
+    except Exception as e:
+        logging.error(f"Error processing directory {folder}: {e}")
+        messagebox.showerror("Ошибка", f"Не удалось обработать папку: {e}")
+
+5. UI и взаимодействие с пользователем
+
+    Tkinter используется для создания окна и интерфейса. Все элементы управления, такие как кнопки и таблицы, размещаются с помощью стандартных виджетов Tkinter и ttk.
+    Treeview используется для отображения информации о файлах в табличном виде.
+    filedialog.askdirectory позволяет пользователю выбрать папку с изображениями.
+
+6. Обработка ошибок и логирование
+
+Все ошибки, возникающие при обработке файлов и папок, логируются в файл image_processing.log. Приложение использует модуль logging для ведения журнала всех операций, ошибок и предупреждений.
+7. Рекомендации по улучшению
+
+    Реализовать возможность фильтрации файлов по расширениям в диалоговом окне выбора папки.
+    Добавить возможность обработки подкаталогов.
+    Реализовать возможность экспорта списка обработанных файлов в CSV или JSON.
+
+
